@@ -85,6 +85,24 @@ impl EndpointBuilder {
         self.map(|b| b.relay_mode(mode));
     }
 
+    /// Remove all IP based transports, forcing all traffic over relays.
+    ///
+    /// This must be called *after* any preset (e.g. [`applyN0`]) that
+    /// installs IP transports, otherwise the preset will re-add them.
+    #[napi]
+    pub fn clear_ip_transports(&self) {
+        self.map(|b| b.clear_ip_transports());
+    }
+
+    /// Only publish relay addresses (no direct IPs) to discovery.
+    ///
+    /// Installs `AddrFilter::relay_only()` so the addresses published to
+    /// discovery (pkarr/DNS) are limited to relay URLs.
+    #[napi]
+    pub fn addr_filter_relay_only(&self) {
+        self.map(|b| b.addr_filter(iroh::address_lookup::AddrFilter::relay_only()));
+    }
+
     /// Set the address the endpoint binds to (`host:port`).
     #[napi]
     pub fn bind_addr(&self, addr: String) -> Result<()> {
@@ -256,6 +274,12 @@ pub struct EndpointOptions {
     pub bind_addr: Option<String>,
     pub secret_key: Option<Vec<u8>>,
     pub alpns: Option<Vec<Vec<u8>>>,
+    /// Force all traffic over relays ("relay-only" mode).
+    ///
+    /// When `true`, removes all IP based transports (no direct connections or
+    /// hole punching) and limits the addresses published to discovery to relay
+    /// URLs only. Defaults to `false` (n0 preset behaviour unchanged).
+    pub relay_only: Option<bool>,
 }
 
 /// An iroh endpoint.
@@ -300,6 +324,12 @@ impl Endpoint {
         }
         if let Some(addr) = options.bind_addr {
             wrapper.bind_addr(addr)?;
+        }
+        // Apply relay-only last so it also clears any IP transport that the
+        // n0 preset or `bind_addr` installed above.
+        if options.relay_only.unwrap_or(false) {
+            wrapper.clear_ip_transports();
+            wrapper.addr_filter_relay_only();
         }
 
         wrapper.bind().await

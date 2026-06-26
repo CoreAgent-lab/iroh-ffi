@@ -129,6 +129,28 @@ suite('endpoint', () => {
     await server.close()
   })
 
+  test('relay-only mode binds without IP transports', async () => {
+    // A normal n0 endpoint binds at least one local UDP socket for direct
+    // (IP) connectivity.
+    const direct = await Endpoint.bind({ alpns: [ALPN] }, RelayMode.disabled())
+    assert.ok(
+      direct.boundSockets().length > 0,
+      'default endpoint should bind IP sockets',
+    )
+    await direct.close()
+
+    // With relayOnly: true the IP transports are cleared, so the endpoint
+    // has no bound IP sockets — all traffic is forced over relays.
+    const relayOnly = await Endpoint.bind({ alpns: [ALPN], relayOnly: true })
+    assert.equal(
+      relayOnly.boundSockets().length,
+      0,
+      'relay-only endpoint should have no direct IP sockets',
+    )
+    assert.ok(relayOnly.id().toString().length > 0)
+    await relayOnly.close()
+  })
+
   test('unidirectional stream', async () => {
     const server = await bindServer()
     const serverAddr = server.addr()
