@@ -1,6 +1,6 @@
 {
   "name": "@cc-remote/iroh-linux-x64-musl",
-  "version": "1.0.0-rc.2",
+  "version": "1.0.0-rc.3",
   "os": [
     "linux"
   ],
@@ -17,7 +17,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/n0-computer/iroh-ffi.git"
+    "url": "git+https://github.com/CoreAgent-lab/iroh-ffi.git"
   },
   "libc": [
     "musl"

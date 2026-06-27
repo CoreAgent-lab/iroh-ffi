@@ -12,7 +12,7 @@
     "network",
     "protocol"
   ],
-  "version": "1.0.0-rc.2",
+  "version": "1.0.0-rc.3",
   "type": "commonjs",
   "main": "iroh-js/index.js",
   "types": "iroh-js/index.d.ts",
@@ -33,7 +33,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/n0-computer/iroh-ffi.git"
+    "url": "git+https://github.com/CoreAgent-lab/iroh-ffi.git"
   },
   "license": "MIT OR Apache-2.0",
   "devDependencies": {
