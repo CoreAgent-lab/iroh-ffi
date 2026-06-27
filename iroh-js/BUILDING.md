@@ -1,4 +1,4 @@
-# 在 macOS (Apple Silicon) 上本机构建与验证 `@number0/iroh`
+# 在 macOS (Apple Silicon) 上本机构建与验证 `@cc-remote/iroh`
 
 本文档说明如何在一台 macOS ARM (M 系列) 机器上，搭建环境、交叉编译出**除 Windows 外的全部平台** napi 二进制 (`.node`)，并在真实目标环境里验证它们能加载、跑通测试 —— 为发布 npm 做准备。
 
