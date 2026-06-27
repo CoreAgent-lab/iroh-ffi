@@ -4,7 +4,7 @@
 
 - **构建脚本**：[`build-local.sh`](./build-local.sh) —— 编出 7 个非 Windows 目标 + 静态校验。
 - **验证脚本**：[`verify-local.sh`](./verify-local.sh) —— Docker 里运行时验证每个 `.node`。
-- Windows (`*-pc-windows-msvc`) 本机编不了，由 CI 的 Windows runner 产出 (见 `../.github/workflows/ci_js.yml`)。
+- 发布矩阵已收敛到 **darwin + linux 共 7 个目标**；android / windows 已从 `napi.targets` 移除（cc-remote 的 daemon 用不到，且 windows 本机编不了）。包以 `@cc-remote/iroh` 发布。
 
 > 本机覆盖的 7 个目标：`aarch64-apple-darwin`、`{x86_64,aarch64}-unknown-linux-{gnu,musl}`、`armv7-unknown-linux-{gnueabihf,musleabihf}`。
 
@@ -123,9 +123,9 @@ cp ../target/<裸三元组>/release/libnumber0_iroh.so iroh.<platform>.node
 
 `aarch64-linux-android` / `armv7-linux-androideabi` 需要 Android NDK，且本项目消费方（Node 守护进程）用不到，已从 `package.json` 的 `napi.targets` 与 `npm/` 子包中删除。如需恢复，加回 targets 并装 NDK r23。
 
-### 4.4 Windows 不在本机构建
+### 4.4 Windows / Android 已从矩阵移除
 
-mac 上编不了 `*-pc-windows-msvc`。发布前需由 CI 的 Windows runner 产出这两个 `.node`，与本机产物合并后再 `napi prepublish` + `npm publish`。
+`*-pc-windows-msvc`（mac 编不了）与 `*-linux-android`（需 NDK、用不到）已从 `napi.targets` 与 `npm/` 子包删除。发布矩阵 = darwin + linux 共 7 个目标，单台 macOS arm 即可全部产出。如需恢复，加回 targets 并补对应工具链（windows 需 windows host 或 cargo-xwin；android 需 NDK r23）。
 
 ---
 
@@ -140,15 +140,39 @@ mac 上编不了 `*-pc-windows-msvc`。发布前需由 CI 的 Windows runner 产
 | linux-x64-musl | x86_64-unknown-linux-musl | napi cross | amd64 · alpine |
 | linux-arm64-musl | aarch64-unknown-linux-musl | napi cross | arm64 · alpine |
 | linux-arm-musleabihf | armv7-unknown-linux-musleabihf | napi cross | arm/v7 · alpine |
-| win32-x64-msvc | x86_64-pc-windows-msvc | **CI only** | CI |
-| win32-arm64-msvc | aarch64-pc-windows-msvc | **CI only** | CI |
 
 ---
 
-## 6. 发布下一步（概要）
+## 6. 发版（发布到 npm）
 
-1. 本机：`./build-local.sh --assemble` + `./verify-local.sh` 全绿。
-2. CI / Windows runner：产出 `win32-*` 的 `.node`。
-3. 集齐全部目标后 `napi prepublish` 装配 `optionalDependencies` + 各子包，`npm publish`（仓库 CI 用 npm Trusted Publishing / OIDC，无 token）。
+发布是 **CI 自动**的：推一个 `v*` tag → `.github/workflows/release-cc-remote.yml` 在单台 `macos-latest` 上跑 `build-local.sh --assemble` 编全部 7 个目标，再 `npm publish` 主包（触发 `napi pre-publish` 先发 7 个平台子包），全部以 `@cc-remote/iroh*` 公开发布、带 provenance。
 
-详见 `../.github/workflows/ci_js.yml` 的 `build` / `publish` 任务。
+### 一次性前置
+- npmjs.com 建好 `cc-remote` org + 一个 **automation** token（对 `@cc-remote` 有 publish 权）。
+- GitHub repo → Settings → Secrets and variables → Actions 加 **Repository secret** `NPM_TOKEN` = 该 token。
+
+### 每次发版
+
+**关键：npm 发布的版本取自 `package.json` 的 `version`，不是 tag 名。** 所以**先 bump 版本，再打 tag**，且 tag 要指向「已含新版本」的 commit。
+
+用 `release.sh` 一步备好（bump 全部 8 个 package.json + 同步 loader 版本串 + 校验 + 撞名检查）：
+
+```bash
+cd iroh-js
+./release.sh 1.0.0          # 正式版 → CI 自动 latest dist-tag
+./release.sh 1.0.1-rc.1     # 预发布 → CI 自动 next dist-tag（不污染 latest）
+```
+
+脚本**不会**自动 commit/tag/push（push tag 会触发不可逆的真发布）。它打印接下来的命令，你 review 后执行：
+
+```bash
+git add -A iroh-js && git commit -m "chore(release): 1.0.0"
+# 合进 main（branch→PR→merge，或本 fork 直接提 main）—— workflow 文件需在被 tag 的 commit 上
+git tag -a v1.0.0 -m "v1.0.0"
+git push origin v1.0.0       # ← 触发 release-cc-remote workflow 发布
+```
+
+> 建议先发一个 `-rc.N` 预发布（走 `next` tag）验证整条链通了，再发正式版。
+> tag 名要唯一——别撞已存在的 tag（如 fork 继承自上游的旧 tag）。
+
+跟踪发布：`gh run list --workflow release-cc-remote.yml` / 在 npmjs.com 看 `@cc-remote/iroh`。
