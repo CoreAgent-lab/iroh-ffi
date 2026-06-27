@@ -1,0 +1,88 @@
+# 自动发布 @cc-remote/iroh 到 npm。
+#
+# 设计：因为发布矩阵已收敛到 7 个 darwin+linux 目标，且 zig-cross 能在单台机器
+# 上全部编出，所以整条流水线只用 **一台 macos-latest runner**（Apple Silicon）：
+# darwin 原生编 + 6 个 linux 经 zig 交叉编，复用 iroh-js/build-local.sh。
+# 不需要 self-hosted runner、不需要 QEMU 构建矩阵（那是上游 ci_js.yml 的做法）。
+#
+# 触发：推一个 `v*` tag（如 `git tag v1.0.0 && git push origin v1.0.0`）。
+#
+# 前置（一次性，在 GitHub 仓库设置里做）：
+#   Settings → Secrets and variables → Actions → New repository secret
+#     NPM_TOKEN = 一个对 @cc-remote scope 有发布权的 npm **automation** token
+#       (npmjs.com → Access Tokens → Generate → Automation)
+#
+# 发布动作：`npm publish` 主包会触发 prepublishOnly → `napi pre-publish`，
+# 后者先逐个发布 7 个平台子包（@cc-remote/iroh-<platform>），主包随后发布。
+# 各包的 publishConfig.access=public 保证 scoped 包以公开方式发布。
+
+name: release (cc-remote npm)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # npm provenance (--provenance)
+
+jobs:
+  publish:
+    name: build all (zig-cross) + publish to npm
+    runs-on: macos-latest # Apple Silicon: darwin 原生 + linux 经 zig 交叉
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: ./iroh-js
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 24 (+ npm registry auth)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Enable corepack (yarn)
+        run: npm install -g corepack --force && corepack enable
+        shell: bash
+
+      - name: Install Rust + linux targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: >-
+            x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu,armv7-unknown-linux-gnueabihf,x86_64-unknown-linux-musl,aarch64-unknown-linux-musl,armv7-unknown-linux-musleabihf
+
+      - name: Install zig + cargo-zigbuild (linux 交叉链接器)
+        run: |
+          brew install zig
+          cargo install cargo-zigbuild --locked
+        shell: bash
+
+      - name: Install JS deps
+        run: yarn install
+        shell: bash
+
+      - name: Build all 7 non-windows targets + assemble into npm/
+        run: ./build-local.sh --assemble
+        shell: bash
+
+      - name: Compute npm dist-tag (prerelease → next, else latest)
+        id: tag
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          case "$VERSION" in
+            *-*) TAG=next ;;
+            *)   TAG=latest ;;
+          esac
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to npm
+        # 主包 publish 触发 prepublishOnly → napi pre-publish：先发 7 个平台子包，再发主包。
+        run: npm publish --provenance --tag "${{ steps.tag.outputs.tag }}"
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
