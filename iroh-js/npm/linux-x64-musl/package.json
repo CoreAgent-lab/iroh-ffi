@@ -1,6 +1,6 @@
 {
-  "name": "@number0/iroh-linux-x64-musl",
-  "version": "1.0.0",
+  "name": "@cc-remote/iroh-linux-x64-musl",
+  "version": "1.0.0-rc.1",
   "os": [
     "linux"
   ],
@@ -21,5 +21,8 @@
   },
   "libc": [
     "musl"
-  ]
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 }

@@ -4,6 +4,6 @@
   "out": "../site/js",
   "skipErrorChecking": true,
   "readme": "none",
-  "name": "@number0/iroh",
+  "name": "@cc-remote/iroh",
   "excludeExternals": true
 }
