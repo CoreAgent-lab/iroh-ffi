@@ -1,5 +1,5 @@
 {
-  "name": "@number0/iroh-linux-arm-gnueabihf",
+  "name": "@cc-remote/iroh-linux-arm-gnueabihf",
   "version": "1.0.0",
   "os": [
     "linux"
@@ -18,5 +18,8 @@
   "license": "MIT",
   "engines": {
     "node": ">= 10"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

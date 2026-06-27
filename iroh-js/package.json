@@ -1,6 +1,6 @@
 {
-  "name": "@number0/iroh",
-  "author": "number0",
+  "name": "@cc-remote/iroh",
+  "author": "cc-remote",
   "description": "A toolkit for building distributed applications",
   "keywords": [
     "iroh",
@@ -50,5 +50,8 @@
     "test": "node --test test/*.mjs",
     "version": "napi version"
   },
-  "packageManager": "yarn@1.22.22"
+  "packageManager": "yarn@1.22.22",
+  "publishConfig": {
+    "access": "public"
+  }
 }

@@ -5,6 +5,16 @@ __metadata:
   version: 8
   cacheKey: 10c0
 
+"@cc-remote/iroh@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "@cc-remote/iroh@workspace:."
+  dependencies:
+    "@napi-rs/cli": "npm:^3.6.2"
+    typedoc: "npm:^0.27.6"
+    typescript: "npm:~5.8.3"
+  languageName: unknown
+  linkType: soft
+
 "@gerrit0/mini-shiki@npm:^1.24.0":
   version: 1.27.2
   resolution: "@gerrit0/mini-shiki@npm:1.27.2"
@@ -832,16 +842,6 @@ __metadata:
   checksum: 10c0/bee9258e0b16a2415acc57d9aa281fa50402b38f631aea28e3a8ecd16415cdfffade63313bca777e85c3a73b80cce899ac3dd35eba9104951d7da1eb28913122
   languageName: node
   linkType: hard
-
-"@number0/iroh@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "@number0/iroh@workspace:."
-  dependencies:
-    "@napi-rs/cli": "npm:^3.6.2"
-    typedoc: "npm:^0.27.6"
-    typescript: "npm:~5.8.3"
-  languageName: unknown
-  linkType: soft
 
 "@octokit/auth-token@npm:^6.0.0":
   version: 6.0.0
