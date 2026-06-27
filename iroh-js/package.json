@@ -12,10 +12,10 @@
     "network",
     "protocol"
   ],
-  "version": "1.0.0-rc.3",
+  "version": "1.0.0-rc.4",
   "type": "commonjs",
-  "main": "iroh-js/index.js",
-  "types": "iroh-js/index.d.ts",
+  "main": "index.js",
+  "types": "index.d.ts",
   "engines": {
     "node": ">= 20.3.0"
   },
