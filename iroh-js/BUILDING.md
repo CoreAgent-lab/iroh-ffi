@@ -145,7 +145,9 @@ cp ../target/<裸三元组>/release/libnumber0_iroh.so iroh.<platform>.node
 
 ## 6. 发版（发布到 npm）
 
-发布是 **CI 自动**的：推一个 `v*` tag → `.github/workflows/release-cc-remote.yml` 在单台 `macos-latest` 上跑 `build-local.sh --assemble` 编全部 7 个目标，再 `npm publish` 主包（触发 `napi pre-publish` 先发 7 个平台子包），全部以 `@cc-remote/iroh*` 公开发布、带 provenance。
+发布是 **CI 自动**的：推一个 `v*` tag → `.github/workflows/release-cc-remote.yml` 跑**并行矩阵**——`build` 阶段每个目标一个 job 并行编（1×macos-latest 原生 darwin + 6×ubuntu-latest 经 zig 交叉编 linux，各自 upload `.node`），`publish` 阶段收齐所有 `.node` → `napi artifacts` 装配进 `npm/` → `npm publish` 主包（触发 `napi pre-publish` 先发 7 个平台子包），全部以 `@cc-remote/iroh*` 公开发布、带 provenance。墙钟约 7-10 分钟（vs 串行单 job 的 ~30 分钟）。公开仓库标准 runner 免费、无分钟上限。
+
+> 本机用 `build-local.sh`（单机串行编全部）做开发/验证；CI 发布走上面的并行矩阵。两者构建每个目标的方式一致（darwin 原生 / musl 走 napi cross / gnu 用 cargo-zigbuild 钉 glibc 2.17）。
 
 ### 一次性前置
 - npmjs.com 建好 `cc-remote` org + 一个 **automation** token（对 `@cc-remote` 有 publish 权）。

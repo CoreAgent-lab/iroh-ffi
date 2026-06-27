@@ -1,20 +1,17 @@
-# 自动发布 @cc-remote/iroh 到 npm。
+# 自动发布 @cc-remote/iroh 到 npm —— 并行矩阵版。
 #
-# 设计：因为发布矩阵已收敛到 7 个 darwin+linux 目标，且 zig-cross 能在单台机器
-# 上全部编出，所以整条流水线只用 **一台 macos-latest runner**（Apple Silicon）：
-# darwin 原生编 + 6 个 linux 经 zig 交叉编，复用 iroh-js/build-local.sh。
-# 不需要 self-hosted runner、不需要 QEMU 构建矩阵（那是上游 ci_js.yml 的做法）。
+# build：矩阵并行，每个 job 只编 1 个目标（1×macOS 原生 darwin + 6×ubuntu 经 zig 交叉
+#        编 linux），各自 upload .node。墙钟 ≈ 最慢单目标的 setup+1 次冷编（~7-10min），
+#        而非串行 7 次（~30min）。公开仓库标准 runner 免费、无分钟上限。
+# publish：收齐所有 .node → napi artifacts 装配进 npm/ → npm publish（主包触发
+#          prepublishOnly→napi pre-publish 先发 7 个平台子包，再发主包）。
 #
-# 触发：推一个 `v*` tag（如 `git tag v1.0.0 && git push origin v1.0.0`）。
+# 触发：推 `v*` tag。前置：repo secret NPM_TOKEN（对 @cc-remote 有 publish 权的 automation token）。
 #
-# 前置（一次性，在 GitHub 仓库设置里做）：
-#   Settings → Secrets and variables → Actions → New repository secret
-#     NPM_TOKEN = 一个对 @cc-remote scope 有发布权的 npm **automation** token
-#       (npmjs.com → Access Tokens → Generate → Automation)
-#
-# 发布动作：`npm publish` 主包会触发 prepublishOnly → `napi pre-publish`，
-# 后者先逐个发布 7 个平台子包（@cc-remote/iroh-<platform>），主包随后发布。
-# 各包的 publishConfig.access=public 保证 scoped 包以公开方式发布。
+# 各目标构建方式（与 iroh-js/build-local.sh 一致）：
+#   - darwin   : napi build（原生，macos-latest）
+#   - linux musl: napi build --cross-compile（zig，静态 libc）
+#   - linux gnu : cargo zigbuild 钉 glibc 2.17 + 手动改名（绕开 napi 不认 glibc 后缀）
 
 name: release (cc-remote npm)
 
@@ -26,13 +23,99 @@ on:
 
 permissions:
   contents: read
-  id-token: write # npm provenance (--provenance)
 
 jobs:
+  build:
+    name: build ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: darwin-arm64,         target: aarch64-apple-darwin,           os: macos-latest,  kind: native }
+          - { platform: linux-x64-gnu,         target: x86_64-unknown-linux-gnu,        os: ubuntu-latest, kind: gnu }
+          - { platform: linux-arm64-gnu,       target: aarch64-unknown-linux-gnu,       os: ubuntu-latest, kind: gnu }
+          - { platform: linux-arm-gnueabihf,   target: armv7-unknown-linux-gnueabihf,   os: ubuntu-latest, kind: gnu }
+          - { platform: linux-x64-musl,        target: x86_64-unknown-linux-musl,       os: ubuntu-latest, kind: musl }
+          - { platform: linux-arm64-musl,      target: aarch64-unknown-linux-musl,      os: ubuntu-latest, kind: musl }
+          - { platform: linux-arm-musleabihf,  target: armv7-unknown-linux-musleabihf,  os: ubuntu-latest, kind: musl }
+    defaults:
+      run:
+        working-directory: ./iroh-js
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 24 (native/musl 需 napi)
+        if: matrix.kind != 'gnu'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Enable corepack (yarn)
+        if: matrix.kind != 'gnu'
+        run: npm install -g corepack --force && corepack enable
+        shell: bash
+
+      - name: Install Rust + target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo (deps + cargo-zigbuild bin)
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+          workspaces: '.'
+
+      - name: Install zig + cargo-zigbuild (gnu/musl 交叉)
+        if: matrix.kind != 'native'
+        run: |
+          cargo install cargo-zigbuild --locked
+        shell: bash
+
+      - name: Setup zig (gnu/musl 交叉链接器)
+        if: matrix.kind != 'native'
+        uses: mlugg/setup-zig@v2
+
+      - name: Install JS deps (native/musl)
+        if: matrix.kind != 'gnu'
+        run: yarn install
+        shell: bash
+
+      - name: Build ${{ matrix.platform }}
+        shell: bash
+        run: |
+          set -e
+          case "${{ matrix.kind }}" in
+            native)
+              yarn napi build --platform --release --strip --target "${{ matrix.target }}"
+              ;;
+            musl)
+              yarn napi build --platform --release --strip --target "${{ matrix.target }}" --cross-compile
+              ;;
+            gnu)
+              export CARGO_PROFILE_RELEASE_STRIP=symbols
+              cargo zigbuild --release --target "${{ matrix.target }}.2.17"
+              cp "../target/${{ matrix.target }}/release/libnumber0_iroh.so" "iroh.${{ matrix.platform }}.node"
+              ;;
+          esac
+          file "iroh.${{ matrix.platform }}.node"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bindings-${{ matrix.platform }}
+          path: iroh-js/iroh.${{ matrix.platform }}.node
+          if-no-files-found: error
+
   publish:
-    name: build all (zig-cross) + publish to npm
-    runs-on: macos-latest # Apple Silicon: darwin 原生 + linux 经 zig 交叉
-    timeout-minutes: 60
+    name: assemble + publish to npm
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm provenance
     defaults:
       run:
         working-directory: ./iroh-js
@@ -49,24 +132,19 @@ jobs:
         run: npm install -g corepack --force && corepack enable
         shell: bash
 
-      - name: Install Rust + linux targets
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: >-
-            x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu,armv7-unknown-linux-gnueabihf,x86_64-unknown-linux-musl,aarch64-unknown-linux-musl,armv7-unknown-linux-musleabihf
-
-      - name: Install zig + cargo-zigbuild (linux 交叉链接器)
-        run: |
-          brew install zig
-          cargo install cargo-zigbuild --locked
-        shell: bash
-
       - name: Install JS deps
         run: yarn install
         shell: bash
 
-      - name: Build all 7 non-windows targets + assemble into npm/
-        run: ./build-local.sh --assemble
+      - name: Download all built .node
+        uses: actions/download-artifact@v4
+        with:
+          pattern: bindings-*
+          merge-multiple: true
+          path: iroh-js/
+
+      - name: Assemble .node into npm/<platform>/
+        run: yarn napi artifacts --output-dir . --npm-dir ./npm
         shell: bash
 
       - name: Compute npm dist-tag (prerelease → next, else latest)
@@ -81,7 +159,6 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Publish to npm
-        # 主包 publish 触发 prepublishOnly → napi pre-publish：先发 7 个平台子包，再发主包。
         run: npm publish --provenance --tag "${{ steps.tag.outputs.tag }}"
         shell: bash
         env:
