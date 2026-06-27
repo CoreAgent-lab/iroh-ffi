@@ -11,3 +11,6 @@ yarn.lock
 .yarn
 __test__
 renovate.json
+*.sh
+BUILDING.md
+build.rs
