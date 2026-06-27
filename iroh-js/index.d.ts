@@ -145,6 +145,20 @@ export declare class EndpointBuilder {
   alpns(alpns: Array<Array<number>>): void
   /** Set the relay mode. */
   relayMode(mode: RelayMode): void
+  /**
+   * Remove all IP based transports, forcing all traffic over relays.
+   *
+   * This must be called *after* any preset (e.g. [`applyN0`]) that
+   * installs IP transports, otherwise the preset will re-add them.
+   */
+  clearIpTransports(): void
+  /**
+   * Only publish relay addresses (no direct IPs) to discovery.
+   *
+   * Installs `AddrFilter::relay_only()` so the addresses published to
+   * discovery (pkarr/DNS) are limited to relay URLs.
+   */
+  addrFilterRelayOnly(): void
   /** Set the address the endpoint binds to (`host:port`). */
   bindAddr(addr: string): void
   /** Bind the endpoint. */
@@ -341,6 +355,14 @@ export interface EndpointOptions {
   bindAddr?: string
   secretKey?: Array<number>
   alpns?: Array<Array<number>>
+  /**
+   * Force all traffic over relays ("relay-only" mode).
+   *
+   * When `true`, removes all IP based transports (no direct connections or
+   * hole punching) and limits the addresses published to discovery to relay
+   * URLs only. Defaults to `false` (n0 preset behaviour unchanged).
+   */
+  relayOnly?: boolean
 }
 
 /** Where an incoming connection came from. */
