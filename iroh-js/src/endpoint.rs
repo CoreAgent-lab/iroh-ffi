@@ -422,10 +422,19 @@ impl Endpoint {
             .collect()
     }
 
-    /// Resolves once the endpoint has a usable home relay.
+    /// Resolves once the endpoint has a usable home relay, or earlier if the
+    /// endpoint is closed.
+    ///
+    /// iroh's `online()` never returns until a home relay connects, and it does
+    /// **not** resolve when the endpoint is closed (it parks forever). A
+    /// fire-and-forget `online()` whose relay never connects would therefore
+    /// leave a napi async task pending indefinitely, which refs the Node event
+    /// loop (invisibly to `process._getActiveHandles()`) and stops the host
+    /// process from exiting. Racing it against endpoint closure means `close()`
+    /// releases a pending `online()` so the loop can drain.
     #[napi]
     pub async fn online(&self) {
-        self.inner.online().await;
+        let _ = self.inner.closed().run_until(self.inner.online()).await;
     }
 
     /// Insert (or replace) a relay configuration at runtime.
