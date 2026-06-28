@@ -1,6 +1,30 @@
 # iroh-js: 下游 "exit 144 / SIGTERM at teardown" 排查结论
 
-## TL;DR(根因)
+## 修正(2026-06-28,下游 macOS 复验后)
+
+下游用 `async_hooks` 在全量/子集 vitest 上复验,结论需要分两层,**本文档下半部分
+原先把二者合并、过度归因了**,在此更正:
+
+- **绑定层确有的问题(本文档主体,结论仍成立)**:fire-and-forget / 永不 resolve 的
+  napi `async` 调用(已确认的实例:`endpoint.online()`)会留下一个 pending 的
+  `napi_resolve_deferred`,ref 住 libuv loop;它对 `_getActiveHandles()` 不可见、
+  且 **`close()` 取消不掉**。这是值得在 iroh-ffi 侧改进的真实缺陷。
+- **但它不必然是某个下游测试套件 exit-144 的主因**:下游的 `noiroh` 子集(完全不加载
+  iroh、transport 被 mock、不调用任何 `online()`)**同样 144**,且该子集 worker 里
+  `napi_resolve_deferred = 0`。顶住 loop 的是**测试侧普通 Node 句柄泄漏**:大量未清
+  `Timeout`、某 worker 高达 **954 个 `FILEHANDLE`**、`DNSCHANNEL`、子进程的
+  `PROCESSWRAP/PIPEWRAP`、未关的 `TCPWRAP`。
+- **正确结论**:该套件的 144 是"**多源句柄泄漏 → worker 退不掉 → tinypool 收尾
+  SIGTERM**"的聚合问题。`online()` 至多是 iroh/relay 那几个 worker 的额外一份泄漏。
+  彻底修需要**测试侧清理**(afterEach 关 server/子进程/fd、unref 或清定时器)**+**
+  iroh-ffi 侧让 `online()` 不悬挂,两边都做;只改 `online()` 不解决。
+
+下面原始分析对"napi 悬挂 async 如何隐形顶住 loop"的机制描述与复现仍然有效,只是它的
+**适用范围**应理解为"绑定层的一类隐患",而非"任意下游 144 的唯一根因"。
+
+---
+
+## TL;DR(绑定层隐患的机制)
 
 下游进程在「测试跑完、准备退出」阶段退不掉,被外层(tinypool / vitest / CI 的
 超时)`SIGTERM` 强杀 → `128 + 15 = 144`。
