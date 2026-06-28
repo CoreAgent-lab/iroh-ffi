@@ -22,8 +22,8 @@
 // Scenarios (parent measures whether the child exits on its own in N seconds):
 //   clean-bind-close   bind + close                -> exits 0   (control)
 //   clean-bind-noclose bind, no close               -> exits 0   (control)
-//   hang-online        ep.online() not awaited      -> HANG
-//   hang-online-close  ep.online() then ep.close()  -> HANG (close does NOT cancel online())
+//   hang-online        ep.online() not awaited      -> HANG (no close: nothing cancels it)
+//   ok-online-close    ep.online() then ep.close()  -> exits 0 (close() now cancels online())
 //   hang-accept        ep.acceptNext() not awaited  -> HANG
 //   ok-accept-close    ep.acceptNext() then close() -> exits 0 (close cancels acceptNext())
 //   diagnose           show the async_hooks resource that pins the loop
@@ -59,9 +59,9 @@ async function child(scenario) {
     case 'hang-online':
       ep.online().then(() => {}, () => {}) // fire-and-forget; never resolves offline
       break
-    case 'hang-online-close':
+    case 'ok-online-close':
       ep.online().then(() => {}, () => {})
-      await ep.close() // does NOT cancel the pending online()
+      await ep.close() // close() now cancels the pending online() (binding races closed())
       break
     case 'hang-accept':
       ep.acceptNext().then(() => {}, () => {})
@@ -102,7 +102,7 @@ const ALL = [
   'clean-bind-close',
   'clean-bind-noclose',
   'hang-online',
-  'hang-online-close',
+  'ok-online-close',
   'hang-accept',
   'ok-accept-close',
 ]

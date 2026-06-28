@@ -22,6 +22,21 @@
 下面原始分析对"napi 悬挂 async 如何隐形顶住 loop"的机制描述与复现仍然有效,只是它的
 **适用范围**应理解为"绑定层的一类隐患",而非"任意下游 144 的唯一根因"。
 
+### 已在本仓库修复的两个绑定层缺陷
+
+1. **`watch_*` abort(SIGABRT/134)**:同步 `#[napi]` 方法里用 `tokio::spawn`
+   导致 "no reactor running" → abort。改用 `napi::bindgen_prelude::spawn`(直接
+   `Runtime::spawn` 到 napi 全局 runtime)。见 `src/watch.rs`。
+2. **`online()` 悬挂不受 `close()` 取消**:`endpoint.online()` 现在 race
+   `endpoint.closed()`(`EndpointClosed::run_until`),所以 `close()` 能让一个
+   pending 的 `online()` 立即返回、释放 loop。见 `src/endpoint.rs`。
+   复现矩阵里 `ok-online-close` 现已 exit 0(改前为 HANG)。
+
+   仍需注意:**fire-and-forget 且既不 await 又不 close 的 `online()`**(矩阵里
+   `hang-online`)依然会顶住进程 —— 没有任何信号可供取消,这本质上是调用方的
+   责任;但现在只要在 teardown `close()` 即可干净释放。`acceptNext()` 同理,
+   close() 一直就能取消它。
+
 ---
 
 ## TL;DR(绑定层隐患的机制)
