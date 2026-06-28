@@ -1,6 +1,6 @@
 {
   "name": "@cc-remote/iroh-linux-arm64-gnu",
-  "version": "1.0.0-rc.5",
+  "version": "1.0.0-rc.6",
   "os": [
     "linux"
   ],
